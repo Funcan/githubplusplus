@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"sync"
 
 	"github.com/spf13/cobra"
 
@@ -51,7 +50,7 @@ func runClone(cmd *cobra.Command, args []string) error {
 		dest string
 	}
 
-	jobs := make(chan job, len(repos))
+	var jobs []job
 	for _, r := range repos {
 		dest := filepath.Join(cloneDest, r.GetName())
 		if cloneSkipExisting {
@@ -60,39 +59,16 @@ func runClone(cmd *cobra.Command, args []string) error {
 				continue
 			}
 		}
-		jobs <- job{name: r.GetFullName(), url: r.GetCloneURL(), dest: dest}
-	}
-	close(jobs)
-
-	var (
-		wg   sync.WaitGroup
-		mu   sync.Mutex
-		errs []error
-	)
-
-	workers := cloneConcurrency
-	if workers > len(repos) {
-		workers = len(repos)
-	}
-	if workers < 1 {
-		workers = 1
+		jobs = append(jobs, job{name: r.GetFullName(), url: r.GetCloneURL(), dest: dest})
 	}
 
-	for i := 0; i < workers; i++ {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			for j := range jobs {
-				fmt.Printf("cloning %s ...\n", j.name)
-				if err := git.Clone(j.url, j.dest); err != nil {
-					mu.Lock()
-					errs = append(errs, fmt.Errorf("%s: %w", j.name, err))
-					mu.Unlock()
-				}
-			}
-		}()
-	}
-	wg.Wait()
+	errs := runConcurrent(jobs, cloneConcurrency, func(j job) error {
+		fmt.Printf("cloning %s ...\n", j.name)
+		if err := git.Clone(j.url, j.dest); err != nil {
+			return fmt.Errorf("%s: %w", j.name, err)
+		}
+		return nil
+	})
 
 	for _, e := range errs {
 		fmt.Fprintf(os.Stderr, "error: %v\n", e)

@@ -6,7 +6,6 @@ import (
 	"net/url"
 	"os"
 	"strings"
-	"sync"
 
 	"github.com/spf13/cobra"
 
@@ -93,43 +92,14 @@ func runMove(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	ch := make(chan job, len(jobs))
-	for _, j := range jobs {
-		ch <- j
-	}
-	close(ch)
-
-	workers := moveConcurrency
-	if workers > len(jobs) {
-		workers = len(jobs)
-	}
-	if workers < 1 {
-		workers = 1
-	}
-
-	var (
-		wg   sync.WaitGroup
-		mu   sync.Mutex
-		errs []error
-	)
-
-	for i := 0; i < workers; i++ {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			for j := range ch {
-				fmt.Printf("moving %s/%s to %s ...\n", j.owner, j.repo, dest)
-				if err := client.TransferRepo(ctx, j.owner, j.repo, dest); err != nil {
-					mu.Lock()
-					errs = append(errs, fmt.Errorf("%s/%s: %w", j.owner, j.repo, err))
-					mu.Unlock()
-				} else {
-					fmt.Printf("moved %s/%s -> %s/%s\n", j.owner, j.repo, dest, j.repo)
-				}
-			}
-		}()
-	}
-	wg.Wait()
+	errs := runConcurrent(jobs, moveConcurrency, func(j job) error {
+		fmt.Printf("moving %s/%s to %s ...\n", j.owner, j.repo, dest)
+		if err := client.TransferRepo(ctx, j.owner, j.repo, dest); err != nil {
+			return fmt.Errorf("%s/%s: %w", j.owner, j.repo, err)
+		}
+		fmt.Printf("moved %s/%s -> %s/%s\n", j.owner, j.repo, dest, j.repo)
+		return nil
+	})
 
 	for _, e := range errs {
 		fmt.Fprintf(os.Stderr, "error: %v\n", e)
