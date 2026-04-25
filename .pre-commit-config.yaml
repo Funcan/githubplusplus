@@ -1,0 +1,28 @@
+repos:
+  - repo: local
+    hooks:
+      - id: fmt
+        name: gofmt
+        entry: make fmt
+        language: system
+        pass_filenames: false
+        types: [go]
+
+      - id: build
+        name: go build
+        entry: make build
+        language: system
+        pass_filenames: false
+        types: [go]
+
+      - id: test
+        name: go test
+        entry: make test
+        language: system
+        pass_filenames: false
+        types: [go]
+
+  - repo: https://github.com/Funcan/gh-action-lint
+    rev: c5c57bf915ed44a4da8dff2710bcb3f9823bc3fc
+    hooks:
+      - id: gh-action-lint
