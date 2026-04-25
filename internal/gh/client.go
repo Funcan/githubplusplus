@@ -38,22 +38,15 @@ func (c *Client) AuthenticatedUser(ctx context.Context) (string, error) {
 
 // ListUserRepos returns all repos for the given user login.
 func (c *Client) ListUserRepos(ctx context.Context, user string) ([]*gogithub.Repository, error) {
-	var all []*gogithub.Repository
-	opts := &gogithub.RepositoryListByUserOptions{
-		ListOptions: gogithub.ListOptions{PerPage: 100},
+	repos, err := paginate(func(page int) ([]*gogithub.Repository, *gogithub.Response, error) {
+		return c.gh.Repositories.ListByUser(ctx, user, &gogithub.RepositoryListByUserOptions{
+			ListOptions: gogithub.ListOptions{PerPage: 100, Page: page},
+		})
+	})
+	if err != nil {
+		return nil, fmt.Errorf("listing repos for user %q: %w", user, err)
 	}
-	for {
-		repos, resp, err := c.gh.Repositories.ListByUser(ctx, user, opts)
-		if err != nil {
-			return nil, fmt.Errorf("listing repos for user %q: %w", user, err)
-		}
-		all = append(all, repos...)
-		if resp.NextPage == 0 {
-			break
-		}
-		opts.Page = resp.NextPage
-	}
-	return all, nil
+	return repos, nil
 }
 
 // GetRepo returns a single repository by owner and name.
@@ -115,50 +108,42 @@ func (c *Client) CompareWithUpstream(ctx context.Context, forkOwner, forkRepo, f
 
 // ListOpenPRs returns all open pull requests for the given repo.
 func (c *Client) ListOpenPRs(ctx context.Context, owner, repo string) ([]*gogithub.PullRequest, error) {
-	var all []*gogithub.PullRequest
-	opts := &gogithub.PullRequestListOptions{
-		State:       "open",
-		ListOptions: gogithub.ListOptions{PerPage: 100},
+	prs, err := paginate(func(page int) ([]*gogithub.PullRequest, *gogithub.Response, error) {
+		return c.gh.PullRequests.List(ctx, owner, repo, &gogithub.PullRequestListOptions{
+			State:       "open",
+			ListOptions: gogithub.ListOptions{PerPage: 100, Page: page},
+		})
+	})
+	if err != nil {
+		return nil, fmt.Errorf("listing PRs for %s/%s: %w", owner, repo, err)
 	}
-	for {
-		prs, resp, err := c.gh.PullRequests.List(ctx, owner, repo, opts)
-		if err != nil {
-			return nil, fmt.Errorf("listing PRs for %s/%s: %w", owner, repo, err)
-		}
-		all = append(all, prs...)
-		if resp.NextPage == 0 {
-			break
-		}
-		opts.Page = resp.NextPage
-	}
-	return all, nil
+	return prs, nil
 }
 
 // ListOpenPRsToUpstream returns all open pull requests whose head is the named
 // fork against the upstream repository.
 func (c *Client) ListOpenPRsToUpstream(ctx context.Context, upstreamOwner, upstreamRepo, forkOwner, forkRepo string) ([]*gogithub.PullRequest, error) {
-	opts := &gogithub.PullRequestListOptions{
-		State:       "open",
-		ListOptions: gogithub.ListOptions{PerPage: 100},
-	}
 	forkFullName := forkOwner + "/" + forkRepo
-	var all []*gogithub.PullRequest
-	for {
-		prs, resp, err := c.gh.PullRequests.List(ctx, upstreamOwner, upstreamRepo, opts)
+	prs, err := paginate(func(page int) ([]*gogithub.PullRequest, *gogithub.Response, error) {
+		all, resp, err := c.gh.PullRequests.List(ctx, upstreamOwner, upstreamRepo, &gogithub.PullRequestListOptions{
+			State:       "open",
+			ListOptions: gogithub.ListOptions{PerPage: 100, Page: page},
+		})
 		if err != nil {
-			return nil, fmt.Errorf("listing PRs for %s/%s: %w", upstreamOwner, upstreamRepo, err)
+			return nil, resp, err
 		}
-		for _, pr := range prs {
+		var filtered []*gogithub.PullRequest
+		for _, pr := range all {
 			if pr.GetHead().GetRepo().GetFullName() == forkFullName {
-				all = append(all, pr)
+				filtered = append(filtered, pr)
 			}
 		}
-		if resp.NextPage == 0 {
-			break
-		}
-		opts.Page = resp.NextPage
+		return filtered, resp, nil
+	})
+	if err != nil {
+		return nil, fmt.Errorf("listing PRs for %s/%s: %w", upstreamOwner, upstreamRepo, err)
 	}
-	return all, nil
+	return prs, nil
 }
 
 // CountOpenPRsToUpstream returns the number of open pull requests from forkOwner
@@ -211,45 +196,37 @@ func (c *Client) pollTransfer(ctx context.Context, newOwner, repo string) error 
 
 // ListOpenIssues returns all open issues (excluding pull requests) for the given repo.
 func (c *Client) ListOpenIssues(ctx context.Context, owner, repo string) ([]*gogithub.Issue, error) {
-	var all []*gogithub.Issue
-	opts := &gogithub.IssueListByRepoOptions{
-		State:       "open",
-		ListOptions: gogithub.ListOptions{PerPage: 100},
-	}
-	for {
-		issues, resp, err := c.gh.Issues.ListByRepo(ctx, owner, repo, opts)
+	issues, err := paginate(func(page int) ([]*gogithub.Issue, *gogithub.Response, error) {
+		all, resp, err := c.gh.Issues.ListByRepo(ctx, owner, repo, &gogithub.IssueListByRepoOptions{
+			State:       "open",
+			ListOptions: gogithub.ListOptions{PerPage: 100, Page: page},
+		})
 		if err != nil {
-			return nil, fmt.Errorf("listing issues for %s/%s: %w", owner, repo, err)
+			return nil, resp, err
 		}
-		for _, issue := range issues {
+		var filtered []*gogithub.Issue
+		for _, issue := range all {
 			if issue.PullRequestLinks == nil {
-				all = append(all, issue)
+				filtered = append(filtered, issue)
 			}
 		}
-		if resp.NextPage == 0 {
-			break
-		}
-		opts.ListOptions.Page = resp.NextPage
+		return filtered, resp, nil
+	})
+	if err != nil {
+		return nil, fmt.Errorf("listing issues for %s/%s: %w", owner, repo, err)
 	}
-	return all, nil
+	return issues, nil
 }
 
 // ListOrgRepos returns all repos for the given org.
 func (c *Client) ListOrgRepos(ctx context.Context, org string) ([]*gogithub.Repository, error) {
-	var all []*gogithub.Repository
-	opts := &gogithub.RepositoryListByOrgOptions{
-		ListOptions: gogithub.ListOptions{PerPage: 100},
+	repos, err := paginate(func(page int) ([]*gogithub.Repository, *gogithub.Response, error) {
+		return c.gh.Repositories.ListByOrg(ctx, org, &gogithub.RepositoryListByOrgOptions{
+			ListOptions: gogithub.ListOptions{PerPage: 100, Page: page},
+		})
+	})
+	if err != nil {
+		return nil, fmt.Errorf("listing repos for org %q: %w", org, err)
 	}
-	for {
-		repos, resp, err := c.gh.Repositories.ListByOrg(ctx, org, opts)
-		if err != nil {
-			return nil, fmt.Errorf("listing repos for org %q: %w", org, err)
-		}
-		all = append(all, repos...)
-		if resp.NextPage == 0 {
-			break
-		}
-		opts.Page = resp.NextPage
-	}
-	return all, nil
+	return repos, nil
 }
