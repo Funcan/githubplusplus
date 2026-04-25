@@ -85,3 +85,19 @@ func validateFork(repo *github.Repository, owner, repoName string) (*github.Repo
 	}
 	return parent, nil
 }
+
+// forEachRepoArg calls fn for each arg, printing errors to stderr as they
+// occur. If any call fails it returns an error using failMsg as the summary.
+func forEachRepoArg(args []string, failMsg string, fn func(string) error) error {
+	var anyErr bool
+	for _, arg := range args {
+		if err := fn(arg); err != nil {
+			fmt.Fprintf(os.Stderr, "error: %s: %v\n", arg, err)
+			anyErr = true
+		}
+	}
+	if anyErr {
+		return fmt.Errorf("%s", failMsg)
+	}
+	return nil
+}

@@ -42,17 +42,9 @@ func runForkUpdate(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	var anyErr bool
-	for _, arg := range args {
-		if err := updateFork(ctx, client, arg); err != nil {
-			fmt.Fprintf(os.Stderr, "error: %s: %v\n", arg, err)
-			anyErr = true
-		}
-	}
-	if anyErr {
-		return fmt.Errorf("one or more repos could not be updated")
-	}
-	return nil
+	return forEachRepoArg(args, "one or more repos could not be updated", func(arg string) error {
+		return updateFork(ctx, client, arg)
+	})
 }
 
 func updateFork(ctx context.Context, client *ghclient.Client, arg string) error {

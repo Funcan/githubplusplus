@@ -3,7 +3,6 @@ package cmd
 import (
 	"context"
 	"fmt"
-	"os"
 	"strings"
 
 	"github.com/spf13/cobra"
@@ -46,21 +45,13 @@ func runForkStatus(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	var anyErr bool
 	ignored := make(map[string]bool, len(forkStatusIgnore))
 	for _, s := range forkStatusIgnore {
 		ignored[s] = true
 	}
-	for _, arg := range args {
-		if err := printForkStatus(ctx, client, arg, ignored); err != nil {
-			fmt.Fprintf(os.Stderr, "error: %s: %v\n", arg, err)
-			anyErr = true
-		}
-	}
-	if anyErr {
-		return fmt.Errorf("one or more repos could not be checked")
-	}
-	return nil
+	return forEachRepoArg(args, "one or more repos could not be checked", func(arg string) error {
+		return printForkStatus(ctx, client, arg, ignored)
+	})
 }
 
 func printForkStatus(ctx context.Context, client *ghclient.Client, arg string, ignored map[string]bool) error {
