@@ -37,23 +37,22 @@ func runIssues(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	return forEachRepoArg(args, "one or more repos could not be listed", func(arg string) error {
-		return printIssues(ctx, client, arg)
+	w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
+	err = forEachExpandedRepo(ctx, client, args, "one or more repos could not be listed", func(owner, repoName string) error {
+		return printIssues(ctx, client, w, owner, repoName)
 	})
+	if flushErr := w.Flush(); flushErr != nil && err == nil {
+		return flushErr
+	}
+	return err
 }
 
-func printIssues(ctx context.Context, client *ghclient.Client, arg string) error {
-	_, owner, repoName, err := resolveRepoArg(arg)
-	if err != nil {
-		return err
-	}
-
+func printIssues(ctx context.Context, client *ghclient.Client, w *tabwriter.Writer, owner, repoName string) error {
 	issues, err := client.ListOpenIssues(ctx, owner, repoName)
 	if err != nil {
 		return err
 	}
 
-	w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
 	for _, issue := range issues {
 		fmt.Fprintf(w, "%s/%s#%d\t%s\t%s\n",
 			owner,
@@ -63,5 +62,5 @@ func printIssues(ctx context.Context, client *ghclient.Client, arg string) error
 			issue.GetHTMLURL(),
 		)
 	}
-	return w.Flush()
+	return nil
 }
