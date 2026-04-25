@@ -106,6 +106,16 @@ func (c *Client) CompareWithUpstream(ctx context.Context, forkOwner, forkRepo, f
 	}, nil
 }
 
+// GetPR returns a single pull request by number. Unlike the list endpoint,
+// the individual PR endpoint populates fields such as mergeable_state.
+func (c *Client) GetPR(ctx context.Context, owner, repo string, number int) (*gogithub.PullRequest, error) {
+	pr, _, err := c.gh.PullRequests.Get(ctx, owner, repo, number)
+	if err != nil {
+		return nil, fmt.Errorf("getting PR %s/%s#%d: %w", owner, repo, number, err)
+	}
+	return pr, nil
+}
+
 // ListOpenPRs returns all open pull requests for the given repo.
 func (c *Client) ListOpenPRs(ctx context.Context, owner, repo string) ([]*gogithub.PullRequest, error) {
 	prs, err := paginate(func(page int) ([]*gogithub.PullRequest, *gogithub.Response, error) {
