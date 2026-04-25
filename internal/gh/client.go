@@ -2,7 +2,9 @@ package gh
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"time"
 
 	"github.com/cli/go-gh/v2/pkg/auth"
 	gogithub "github.com/google/go-github/v72/github"
@@ -146,6 +148,44 @@ func (c *Client) CountOpenPRsToUpstream(ctx context.Context, upstreamOwner, upst
 		return 0, err
 	}
 	return len(prs), nil
+}
+
+// TransferRepo moves owner/repo to newOwner (an org or user login).
+// If GitHub queues the transfer asynchronously (202 Accepted), it polls until
+// the repository appears under newOwner or the context deadline is exceeded.
+func (c *Client) TransferRepo(ctx context.Context, owner, repo, newOwner string) error {
+	_, _, err := c.gh.Repositories.Transfer(ctx, owner, repo, gogithub.TransferRequest{
+		NewOwner: newOwner,
+	})
+	if err != nil {
+		var acceptedErr *gogithub.AcceptedError
+		if !errors.As(err, &acceptedErr) {
+			return fmt.Errorf("transferring %s/%s to %s: %w", owner, repo, newOwner, err)
+		}
+		// 202 Accepted: transfer is queued — poll until it lands.
+		if pollErr := c.pollTransfer(ctx, newOwner, repo); pollErr != nil {
+			return fmt.Errorf("waiting for transfer of %s/%s to %s: %w", owner, repo, newOwner, pollErr)
+		}
+	}
+	return nil
+}
+
+// pollTransfer waits until newOwner/repo is accessible, indicating the
+// transfer completed. It retries every 3 s up to the context deadline.
+func (c *Client) pollTransfer(ctx context.Context, newOwner, repo string) error {
+	ticker := time.NewTicker(3 * time.Second)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-ticker.C:
+			_, _, err := c.gh.Repositories.Get(ctx, newOwner, repo)
+			if err == nil {
+				return nil
+			}
+		}
+	}
 }
 
 // ListOrgRepos returns all repos for the given org.
