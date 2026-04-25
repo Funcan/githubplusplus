@@ -113,6 +113,27 @@ func (c *Client) CompareWithUpstream(ctx context.Context, forkOwner, forkRepo, f
 	}, nil
 }
 
+// ListOpenPRs returns all open pull requests for the given repo.
+func (c *Client) ListOpenPRs(ctx context.Context, owner, repo string) ([]*gogithub.PullRequest, error) {
+	var all []*gogithub.PullRequest
+	opts := &gogithub.PullRequestListOptions{
+		State:       "open",
+		ListOptions: gogithub.ListOptions{PerPage: 100},
+	}
+	for {
+		prs, resp, err := c.gh.PullRequests.List(ctx, owner, repo, opts)
+		if err != nil {
+			return nil, fmt.Errorf("listing PRs for %s/%s: %w", owner, repo, err)
+		}
+		all = append(all, prs...)
+		if resp.NextPage == 0 {
+			break
+		}
+		opts.Page = resp.NextPage
+	}
+	return all, nil
+}
+
 // ListOpenPRsToUpstream returns all open pull requests whose head is the named
 // fork against the upstream repository.
 func (c *Client) ListOpenPRsToUpstream(ctx context.Context, upstreamOwner, upstreamRepo, forkOwner, forkRepo string) ([]*gogithub.PullRequest, error) {
@@ -186,6 +207,31 @@ func (c *Client) pollTransfer(ctx context.Context, newOwner, repo string) error 
 			}
 		}
 	}
+}
+
+// ListOpenIssues returns all open issues (excluding pull requests) for the given repo.
+func (c *Client) ListOpenIssues(ctx context.Context, owner, repo string) ([]*gogithub.Issue, error) {
+	var all []*gogithub.Issue
+	opts := &gogithub.IssueListByRepoOptions{
+		State:       "open",
+		ListOptions: gogithub.ListOptions{PerPage: 100},
+	}
+	for {
+		issues, resp, err := c.gh.Issues.ListByRepo(ctx, owner, repo, opts)
+		if err != nil {
+			return nil, fmt.Errorf("listing issues for %s/%s: %w", owner, repo, err)
+		}
+		for _, issue := range issues {
+			if issue.PullRequestLinks == nil {
+				all = append(all, issue)
+			}
+		}
+		if resp.NextPage == 0 {
+			break
+		}
+		opts.ListOptions.Page = resp.NextPage
+	}
+	return all, nil
 }
 
 // ListOrgRepos returns all repos for the given org.
