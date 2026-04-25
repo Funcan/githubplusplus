@@ -27,9 +27,16 @@ func collectRepos(ctx context.Context, client *ghclient.Client) ([]*gogithub.Rep
 		users = append(users, login)
 	}
 
+	// Track which usernames have already been fetched to avoid duplicate API
+	// calls when the same handle appears in both --user and --org.
+	fetched := make(map[string]bool)
 	var all []*gogithub.Repository
 
 	for _, u := range users {
+		if fetched[u] {
+			continue
+		}
+		fetched[u] = true
 		repos, err := client.ListUserRepos(ctx, u)
 		if err != nil {
 			return nil, err
@@ -38,6 +45,10 @@ func collectRepos(ctx context.Context, client *ghclient.Client) ([]*gogithub.Rep
 	}
 
 	for _, org := range flagOrgs {
+		if fetched[org] {
+			continue
+		}
+		fetched[org] = true
 		repos, err := client.ListOrgRepos(ctx, org)
 		if err != nil {
 			if isNotFound(err) {
@@ -53,7 +64,22 @@ func collectRepos(ctx context.Context, client *ghclient.Client) ([]*gogithub.Rep
 		all = append(all, repos...)
 	}
 
-	return all, nil
+	return deduplicateRepos(all), nil
+}
+
+// deduplicateRepos returns repos with duplicates removed, preserving the first
+// occurrence of each repository identified by its full name (owner/repo).
+func deduplicateRepos(repos []*gogithub.Repository) []*gogithub.Repository {
+	seen := make(map[string]struct{}, len(repos))
+	out := make([]*gogithub.Repository, 0, len(repos))
+	for _, r := range repos {
+		key := r.GetFullName()
+		if _, ok := seen[key]; !ok {
+			seen[key] = struct{}{}
+			out = append(out, r)
+		}
+	}
+	return out
 }
 
 func isNotFound(err error) bool {
