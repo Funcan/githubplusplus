@@ -118,6 +118,138 @@ gh++ clone --org Funcan --dest ~/code/funcan
 | `--skip-existing` | Skip repos whose local directory already exists |
 | `--concurrency N` | Number of parallel clone workers (default: `8`) |
 
+---
+
+### `issues`
+
+List open issues for one or more repos.
+
+```sh
+# List issues for the repo in the current directory
+gh++ issues
+
+# List issues for a specific repo
+gh++ issues owner/repo
+
+# List issues for all repos owned by a user or org
+gh++ issues my-org
+
+# List issues for multiple repos
+gh++ issues owner/repo-a owner/repo-b
+```
+
+Each argument may be a local path to a git checkout, an `owner/repo` reference,
+or an `owner` name (which expands to all repos for that user or org).
+
+---
+
+### `prs`
+
+List open pull requests for one or more repos.
+
+```sh
+# List PRs for the repo in the current directory
+gh++ prs
+
+# List PRs for a specific repo
+gh++ prs owner/repo
+
+# List PRs for all repos owned by a user or org
+gh++ prs my-org
+
+# List PRs for multiple repos
+gh++ prs owner/repo-a owner/repo-b
+```
+
+Each argument may be a local path to a git checkout, an `owner/repo` reference,
+or an `owner` name (which expands to all repos for that user or org).
+
+---
+
+### `move`
+
+Move one or more repos to a different org or user account.
+
+```sh
+# Move a repo to an org
+gh++ move owner/repo --to-org my-org
+
+# Move a repo to a personal account
+gh++ move owner/repo --to-user myusername
+
+# Move multiple repos in parallel
+gh++ move owner/repo-a owner/repo-b --to-org my-org --concurrency 4
+```
+
+**Flags:**
+
+| Flag | Description |
+|---|---|
+| `--to-org ORG` | Destination org (mutually exclusive with `--to-user`) |
+| `--to-user USER` | Destination user (mutually exclusive with `--to-org`) |
+| `--concurrency N` | Number of parallel transfer workers (default: `8`) |
+
+---
+
+### `fork`
+
+Subcommands for working with forked repositories.
+
+#### `fork status`
+
+Show whether one or more forks are up to date with their upstream.
+
+```sh
+# Check the fork in the current directory
+gh++ fork status
+
+# Check a specific fork by owner/repo
+gh++ fork status owner/repo
+
+# Check multiple forks, suppress identical ones
+gh++ fork status owner/repo-a owner/repo-b --ignore-status identical
+```
+
+Possible statuses: `identical`, `behind`, `ahead`, `diverged`. A `PRsOpen`
+label is also shown when the fork has open pull requests to its upstream.
+
+**Flags:**
+
+| Flag | Description |
+|---|---|
+| `--ignore-status STATUS,...` | Comma-separated statuses to suppress (`identical`, `behind`, `ahead`, `diverged`, `PRsOpen`) |
+
+#### `fork update`
+
+Pull upstream changes into one or more forked repositories via the GitHub API.
+If a local path is given, also runs `git fetch origin` and fast-forwards the
+default branch (when it is currently checked out).
+
+```sh
+# Update the fork in the current directory
+gh++ fork update
+
+# Update a specific fork
+gh++ fork update owner/repo
+
+# Update all forks for an org
+gh++ fork update my-org
+```
+
+#### `fork prs`
+
+List the URLs of all open pull requests from a fork to its upstream.
+
+```sh
+# List PRs for the fork in the current directory
+gh++ fork prs
+
+# List PRs for a specific fork
+gh++ fork prs owner/repo
+```
+
+---
+
 ## Development
 
 ```sh
