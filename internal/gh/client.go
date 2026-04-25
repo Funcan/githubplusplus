@@ -111,6 +111,43 @@ func (c *Client) CompareWithUpstream(ctx context.Context, forkOwner, forkRepo, f
 	}, nil
 }
 
+// ListOpenPRsToUpstream returns all open pull requests whose head is the named
+// fork against the upstream repository.
+func (c *Client) ListOpenPRsToUpstream(ctx context.Context, upstreamOwner, upstreamRepo, forkOwner, forkRepo string) ([]*gogithub.PullRequest, error) {
+	opts := &gogithub.PullRequestListOptions{
+		State:       "open",
+		ListOptions: gogithub.ListOptions{PerPage: 100},
+	}
+	forkFullName := forkOwner + "/" + forkRepo
+	var all []*gogithub.PullRequest
+	for {
+		prs, resp, err := c.gh.PullRequests.List(ctx, upstreamOwner, upstreamRepo, opts)
+		if err != nil {
+			return nil, fmt.Errorf("listing PRs for %s/%s: %w", upstreamOwner, upstreamRepo, err)
+		}
+		for _, pr := range prs {
+			if pr.GetHead().GetRepo().GetFullName() == forkFullName {
+				all = append(all, pr)
+			}
+		}
+		if resp.NextPage == 0 {
+			break
+		}
+		opts.Page = resp.NextPage
+	}
+	return all, nil
+}
+
+// CountOpenPRsToUpstream returns the number of open pull requests from forkOwner
+// against the upstream repository.
+func (c *Client) CountOpenPRsToUpstream(ctx context.Context, upstreamOwner, upstreamRepo, forkOwner, forkRepo string) (int, error) {
+	prs, err := c.ListOpenPRsToUpstream(ctx, upstreamOwner, upstreamRepo, forkOwner, forkRepo)
+	if err != nil {
+		return 0, err
+	}
+	return len(prs), nil
+}
+
 // ListOrgRepos returns all repos for the given org.
 func (c *Client) ListOrgRepos(ctx context.Context, org string) ([]*gogithub.Repository, error) {
 	var all []*gogithub.Repository

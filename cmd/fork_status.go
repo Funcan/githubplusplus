@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"strings"
 
 	"github.com/spf13/cobra"
 
@@ -31,7 +32,7 @@ Possible statuses:
 
 func init() {
 	forkCmd.AddCommand(forkStatusCmd)
-	forkStatusCmd.Flags().StringSliceVar(&forkStatusIgnore, "ignore-status", nil, "Comma-separated list of statuses to suppress (identical,behind,ahead,diverged)")
+	forkStatusCmd.Flags().StringSliceVar(&forkStatusIgnore, "ignore-status", nil, "Comma-separated list of statuses to suppress (identical,behind,ahead,diverged,PRsOpen)")
 }
 
 func runForkStatus(cmd *cobra.Command, args []string) error {
@@ -84,28 +85,42 @@ func printForkStatus(ctx context.Context, client *ghclient.Client, arg string, i
 
 	forkBranch := repo.GetDefaultBranch()
 	upstreamOwner := parent.GetOwner().GetLogin()
+	upstreamRepo := parent.GetName()
 	upstreamBranch := parent.GetDefaultBranch()
 
-	status, err := client.CompareWithUpstream(ctx, owner, repoName, forkBranch, upstreamOwner, upstreamBranch)
+	cmp, err := client.CompareWithUpstream(ctx, owner, repoName, forkBranch, upstreamOwner, upstreamBranch)
 	if err != nil {
 		return err
 	}
 
-	if ignored[status.Status] {
-		return nil
+	openPRs, err := client.CountOpenPRsToUpstream(ctx, upstreamOwner, upstreamRepo, owner, repoName)
+	if err != nil {
+		return err
 	}
 
-	switch status.Status {
-	case "identical":
-		fmt.Printf("%s/%s: identical\n", owner, repoName)
-	case "behind":
-		fmt.Printf("%s/%s: behind (%d commit(s) behind upstream)\n", owner, repoName, status.BehindBy)
-	case "ahead":
-		fmt.Printf("%s/%s: ahead (%d commit(s) ahead of upstream)\n", owner, repoName, status.AheadBy)
-	case "diverged":
-		fmt.Printf("%s/%s: diverged (%d ahead, %d behind)\n", owner, repoName, status.AheadBy, status.BehindBy)
-	default:
-		fmt.Printf("%s/%s: %s\n", owner, repoName, status.Status)
+	var labels []string
+
+	if !ignored[cmp.Status] {
+		switch cmp.Status {
+		case "identical":
+			labels = append(labels, "identical")
+		case "behind":
+			labels = append(labels, fmt.Sprintf("behind (%d commit(s) behind upstream)", cmp.BehindBy))
+		case "ahead":
+			labels = append(labels, fmt.Sprintf("ahead (%d commit(s) ahead of upstream)", cmp.AheadBy))
+		case "diverged":
+			labels = append(labels, fmt.Sprintf("diverged (%d ahead, %d behind)", cmp.AheadBy, cmp.BehindBy))
+		default:
+			labels = append(labels, cmp.Status)
+		}
+	}
+
+	if openPRs > 0 && !ignored["PRsOpen"] {
+		labels = append(labels, fmt.Sprintf("PRsOpen (%d)", openPRs))
+	}
+
+	if len(labels) > 0 {
+		fmt.Printf("%s/%s: %s\n", owner, repoName, strings.Join(labels, ", "))
 	}
 
 	return nil
