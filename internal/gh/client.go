@@ -86,6 +86,31 @@ func (c *Client) MergeUpstream(ctx context.Context, owner, repo, branch string) 
 	}, nil
 }
 
+// ForkStatus holds the result of comparing a fork's branch against its upstream.
+type ForkStatus struct {
+	// Status is one of "identical", "ahead", "behind", or "diverged".
+	Status   string
+	AheadBy  int
+	BehindBy int
+}
+
+// CompareWithUpstream compares the fork's default branch against the upstream's
+// default branch and returns the relationship between them.
+func (c *Client) CompareWithUpstream(ctx context.Context, forkOwner, forkRepo, forkBranch, upstreamOwner, upstreamBranch string) (*ForkStatus, error) {
+	// base is the upstream ref; head is the fork branch. The comparison is run
+	// in the context of the fork repo so GitHub can resolve both sides.
+	base := upstreamOwner + ":" + upstreamBranch
+	cmp, _, err := c.gh.Repositories.CompareCommits(ctx, forkOwner, forkRepo, base, forkBranch, nil)
+	if err != nil {
+		return nil, fmt.Errorf("comparing %s/%s with upstream: %w", forkOwner, forkRepo, err)
+	}
+	return &ForkStatus{
+		Status:   cmp.GetStatus(),
+		AheadBy:  cmp.GetAheadBy(),
+		BehindBy: cmp.GetBehindBy(),
+	}, nil
+}
+
 // ListOrgRepos returns all repos for the given org.
 func (c *Client) ListOrgRepos(ctx context.Context, org string) ([]*gogithub.Repository, error) {
 	var all []*gogithub.Repository

@@ -1,0 +1,112 @@
+package cmd
+
+import (
+	"context"
+	"fmt"
+	"os"
+
+	"github.com/spf13/cobra"
+
+	ghclient "github.com/Funcan/githubplusplus/internal/gh"
+)
+
+var forkStatusIgnore []string
+
+var forkStatusCmd = &cobra.Command{
+	Use:   "status [repo...]",
+	Short: "Show whether one or more forks are up to date with their upstream",
+	Long: `Compare each fork's default branch against its upstream and print the status.
+
+Each argument may be a local path to a git checkout or a GitHub "owner/repo"
+reference. If no arguments are given the repository in the current directory
+is used.
+
+Possible statuses:
+  identical  The fork is fully up to date with upstream.
+  behind     The fork is missing commits from upstream (needs updating).
+  ahead      The fork has commits not present in upstream.
+  diverged   The fork and upstream have each moved forward independently.`,
+	RunE: runForkStatus,
+}
+
+func init() {
+	forkCmd.AddCommand(forkStatusCmd)
+	forkStatusCmd.Flags().StringSliceVar(&forkStatusIgnore, "ignore-status", nil, "Comma-separated list of statuses to suppress (identical,behind,ahead,diverged)")
+}
+
+func runForkStatus(cmd *cobra.Command, args []string) error {
+	if len(args) == 0 {
+		args = []string{"."}
+	}
+
+	ctx := context.Background()
+	client, err := ghclient.New()
+	if err != nil {
+		return err
+	}
+
+	var anyErr bool
+	ignored := make(map[string]bool, len(forkStatusIgnore))
+	for _, s := range forkStatusIgnore {
+		ignored[s] = true
+	}
+	for _, arg := range args {
+		if err := printForkStatus(ctx, client, arg, ignored); err != nil {
+			fmt.Fprintf(os.Stderr, "error: %s: %v\n", arg, err)
+			anyErr = true
+		}
+	}
+	if anyErr {
+		return fmt.Errorf("one or more repos could not be checked")
+	}
+	return nil
+}
+
+func printForkStatus(ctx context.Context, client *ghclient.Client, arg string, ignored map[string]bool) error {
+	_, owner, repoName, err := resolveRepoArg(arg)
+	if err != nil {
+		return err
+	}
+
+	repo, err := client.GetRepo(ctx, owner, repoName)
+	if err != nil {
+		return err
+	}
+
+	if !repo.GetFork() {
+		return fmt.Errorf("%s/%s is not a fork", owner, repoName)
+	}
+
+	parent := repo.GetParent()
+	if parent == nil {
+		return fmt.Errorf("%s/%s: upstream parent metadata unavailable", owner, repoName)
+	}
+
+	forkBranch := repo.GetDefaultBranch()
+	upstreamOwner := parent.GetOwner().GetLogin()
+	upstreamBranch := parent.GetDefaultBranch()
+
+	status, err := client.CompareWithUpstream(ctx, owner, repoName, forkBranch, upstreamOwner, upstreamBranch)
+	if err != nil {
+		return err
+	}
+
+	if ignored[status.Status] {
+		return nil
+	}
+
+	switch status.Status {
+	case "identical":
+		fmt.Printf("%s/%s: identical\n", owner, repoName)
+	case "behind":
+		fmt.Printf("%s/%s: behind (%d commit(s) behind upstream)\n", owner, repoName, status.BehindBy)
+	case "ahead":
+		fmt.Printf("%s/%s: ahead (%d commit(s) ahead of upstream)\n", owner, repoName, status.AheadBy)
+	case "diverged":
+		fmt.Printf("%s/%s: diverged (%d ahead, %d behind)\n", owner, repoName, status.AheadBy, status.BehindBy)
+	default:
+		fmt.Printf("%s/%s: %s\n", owner, repoName, status.Status)
+	}
+
+	return nil
+}
