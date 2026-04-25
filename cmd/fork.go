@@ -6,6 +6,7 @@ import (
 	"os"
 	"strings"
 
+	"github.com/google/go-github/v72/github"
 	"github.com/spf13/cobra"
 
 	"github.com/Funcan/githubplusplus/internal/git"
@@ -70,4 +71,17 @@ func parseGitHubURL(rawURL string) (owner, repo string, err error) {
 		return parts[0], parts[1], nil
 	}
 	return "", "", fmt.Errorf("cannot extract owner/repo from path %q", u.Path)
+}
+
+// validateFork checks that repo is a fork with available parent metadata and
+// returns the parent repository. Returns an error if either check fails.
+func validateFork(repo *github.Repository, owner, repoName string) (*github.Repository, error) {
+	if !repo.GetFork() {
+		return nil, fmt.Errorf("%s/%s is not a fork", owner, repoName)
+	}
+	parent := repo.GetParent()
+	if parent == nil {
+		return nil, fmt.Errorf("%s/%s: upstream parent metadata unavailable", owner, repoName)
+	}
+	return parent, nil
 }

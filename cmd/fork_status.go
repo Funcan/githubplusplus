@@ -74,13 +74,9 @@ func printForkStatus(ctx context.Context, client *ghclient.Client, arg string, i
 		return err
 	}
 
-	if !repo.GetFork() {
-		return fmt.Errorf("%s/%s is not a fork", owner, repoName)
-	}
-
-	parent := repo.GetParent()
-	if parent == nil {
-		return fmt.Errorf("%s/%s: upstream parent metadata unavailable", owner, repoName)
+	parent, err := validateFork(repo, owner, repoName)
+	if err != nil {
+		return err
 	}
 
 	forkBranch := repo.GetDefaultBranch()
