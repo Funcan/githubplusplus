@@ -54,6 +54,38 @@ func (c *Client) ListUserRepos(ctx context.Context, user string) ([]*gogithub.Re
 	return all, nil
 }
 
+// GetRepo returns a single repository by owner and name.
+func (c *Client) GetRepo(ctx context.Context, owner, repo string) (*gogithub.Repository, error) {
+	r, _, err := c.gh.Repositories.Get(ctx, owner, repo)
+	if err != nil {
+		return nil, fmt.Errorf("getting repo %s/%s: %w", owner, repo, err)
+	}
+	return r, nil
+}
+
+// MergeUpstreamResult holds the outcome of a fork-sync operation.
+type MergeUpstreamResult struct {
+	// MergeType is "merge", "fast-forward", or "none" (already up to date).
+	MergeType string
+	Message   string
+}
+
+// MergeUpstream syncs the named branch of a fork with its upstream via the
+// GitHub API. The call is synchronous: a successful return means the fork has
+// been updated.
+func (c *Client) MergeUpstream(ctx context.Context, owner, repo, branch string) (*MergeUpstreamResult, error) {
+	result, _, err := c.gh.Repositories.MergeUpstream(ctx, owner, repo, &gogithub.RepoMergeUpstreamRequest{
+		Branch: &branch,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("merging upstream for %s/%s@%s: %w", owner, repo, branch, err)
+	}
+	return &MergeUpstreamResult{
+		MergeType: result.GetMergeType(),
+		Message:   result.GetMessage(),
+	}, nil
+}
+
 // ListOrgRepos returns all repos for the given org.
 func (c *Client) ListOrgRepos(ctx context.Context, org string) ([]*gogithub.Repository, error) {
 	var all []*gogithub.Repository
