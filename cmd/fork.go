@@ -22,7 +22,8 @@ func init() {
 }
 
 // resolveRepoArg converts a CLI argument into a (localPath, owner, repo) triple.
-// The argument may be a local directory path or an "owner/repo" GitHub reference.
+// The argument may be a local directory path, an "owner/repo" GitHub reference,
+// or a "github.com/owner/repo" reference.
 func resolveRepoArg(arg string) (localPath, owner, repoName string, err error) {
 	info, statErr := os.Stat(arg)
 	if statErr == nil && info.IsDir() {
@@ -37,7 +38,8 @@ func resolveRepoArg(arg string) (localPath, owner, repoName string, err error) {
 		return arg, owner, repoName, nil
 	}
 
-	parts := strings.SplitN(arg, "/", 2)
+	ref := strings.TrimPrefix(arg, "github.com/")
+	parts := strings.SplitN(ref, "/", 2)
 	if len(parts) == 2 && parts[0] != "" && parts[1] != "" && !strings.Contains(parts[1], "/") {
 		return "", parts[0], parts[1], nil
 	}
