@@ -3,6 +3,7 @@ package cmd
 import (
 	"context"
 	"fmt"
+	"os"
 	"strings"
 
 	"github.com/spf13/cobra"
@@ -114,6 +115,8 @@ var checks = []check{
 	},
 }
 
+var scanIncludeArchived bool
+
 var scanCmd = &cobra.Command{
 	Use:   "scan [repo...]",
 	Short: "Run checks against one or more repositories",
@@ -126,6 +129,7 @@ is used.`,
 }
 
 func init() {
+	scanCmd.Flags().BoolVar(&scanIncludeArchived, "include-archived", false, "Include archived repositories in the scan")
 	rootCmd.AddCommand(scanCmd)
 }
 
@@ -154,6 +158,14 @@ func workflowTriggersOnPR(content string) bool {
 	return false
 }
 
+func stdoutIsTerminal() bool {
+	info, err := os.Stdout.Stat()
+	if err != nil {
+		return false
+	}
+	return info.Mode()&os.ModeCharDevice != 0
+}
+
 func runScan(cmd *cobra.Command, args []string) error {
 	if len(args) == 0 {
 		args = []string{"."}
@@ -164,13 +176,35 @@ func runScan(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
+	isTerm := stdoutIsTerminal()
+	pass := "PASS"
+	warn := "WARNING"
+	if isTerm {
+		pass = "\033[32mPASS\033[0m"
+		warn = "\033[33mWARNING\033[0m"
+	}
+
+	first := true
 	return forEachExpandedRepo(ctx, client, args, "one or more repos could not be scanned", func(owner, repo string) error {
+		if !scanIncludeArchived {
+			r, err := client.GetRepo(ctx, owner, repo)
+			if err != nil {
+				return err
+			}
+			if r.GetArchived() {
+				return nil
+			}
+		}
+		if !first {
+			fmt.Println()
+		}
+		first = false
 		for _, c := range checks {
 			err := c.run(ctx, client, owner, repo)
 			if err != nil {
-				fmt.Printf("%s/%s: %s FAIL: %v\n", owner, repo, c.name, err)
+				fmt.Printf("%s/%s: %s %s: %v\n", owner, repo, c.name, warn, err)
 			} else {
-				fmt.Printf("%s/%s: %s PASS\n", owner, repo, c.name)
+				fmt.Printf("%s/%s: %s %s\n", owner, repo, c.name, pass)
 			}
 		}
 		return nil
