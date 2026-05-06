@@ -228,6 +228,69 @@ func (c *Client) ListOpenIssues(ctx context.Context, owner, repo string) ([]*gog
 	return issues, nil
 }
 
+// ListDir returns the contents of a directory in the repository's default branch.
+// Returns nil (not an error) if the path does not exist.
+func (c *Client) ListDir(ctx context.Context, owner, repo, path string) ([]*gogithub.RepositoryContent, error) {
+	_, dir, resp, err := c.gh.Repositories.GetContents(ctx, owner, repo, path, nil)
+	if err != nil {
+		if resp != nil && resp.StatusCode == 404 {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("listing %s in %s/%s: %w", path, owner, repo, err)
+	}
+	return dir, nil
+}
+
+// GetFileContent returns the decoded text content of a file in the repository's default branch.
+func (c *Client) GetFileContent(ctx context.Context, owner, repo, path string) (string, error) {
+	file, _, _, err := c.gh.Repositories.GetContents(ctx, owner, repo, path, nil)
+	if err != nil {
+		return "", fmt.Errorf("getting %s in %s/%s: %w", path, owner, repo, err)
+	}
+	content, err := file.GetContent()
+	if err != nil {
+		return "", fmt.Errorf("decoding %s in %s/%s: %w", path, owner, repo, err)
+	}
+	return content, nil
+}
+
+// BranchExists reports whether the named branch exists in the repository.
+func (c *Client) BranchExists(ctx context.Context, owner, repo, branch string) (bool, error) {
+	_, resp, err := c.gh.Repositories.GetBranch(ctx, owner, repo, branch, 0)
+	if err != nil {
+		if resp != nil && resp.StatusCode == 404 {
+			return false, nil
+		}
+		return false, fmt.Errorf("getting branch %s in %s/%s: %w", branch, owner, repo, err)
+	}
+	return true, nil
+}
+
+// GetBranchProtection returns the protection rules for the given branch.
+// Returns nil (not an error) if the branch exists but has no protection rules.
+func (c *Client) GetBranchProtection(ctx context.Context, owner, repo, branch string) (*gogithub.Protection, error) {
+	protection, resp, err := c.gh.Repositories.GetBranchProtection(ctx, owner, repo, branch)
+	if err != nil {
+		if resp != nil && resp.StatusCode == 404 {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("getting branch protection for %s in %s/%s: %w", branch, owner, repo, err)
+	}
+	return protection, nil
+}
+
+// FileExists reports whether the given path exists in the repository's default branch.
+func (c *Client) FileExists(ctx context.Context, owner, repo, path string) (bool, error) {
+	_, _, resp, err := c.gh.Repositories.GetContents(ctx, owner, repo, path, nil)
+	if err != nil {
+		if resp != nil && resp.StatusCode == 404 {
+			return false, nil
+		}
+		return false, fmt.Errorf("checking %s in %s/%s: %w", path, owner, repo, err)
+	}
+	return true, nil
+}
+
 // ListOrgRepos returns all repos for the given org.
 func (c *Client) ListOrgRepos(ctx context.Context, org string) ([]*gogithub.Repository, error) {
 	repos, err := paginate(func(page int) ([]*gogithub.Repository, *gogithub.Response, error) {
