@@ -159,10 +159,19 @@ gh++ prs my-org
 
 # List PRs for multiple repos
 gh++ prs owner/repo-a owner/repo-b
+
+# List only PRs that are ready to merge (checks passed, no conflicts, reviews approved)
+gh++ prs --ready owner/repo
 ```
 
 Each argument may be a local path to a git checkout, an `owner/repo` reference,
 or an `owner` name (which expands to all repos for that user or org).
+
+**Flags:**
+
+| Flag | Description |
+|---|---|
+| `--ready` | Only list PRs that are ready to merge (checks passed, no merge conflicts, required reviews approved) |
 
 ---
 
