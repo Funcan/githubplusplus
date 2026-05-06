@@ -3,8 +3,10 @@ package cmd
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	"github.com/spf13/cobra"
+	"gopkg.in/yaml.v3"
 
 	ghclient "github.com/Funcan/githubplusplus/internal/gh"
 )
@@ -17,6 +19,29 @@ type check struct {
 }
 
 var checks = []check{
+	{
+		name: "ci-on-pr",
+		run: func(ctx context.Context, client *ghclient.Client, owner, repo string) error {
+			files, err := client.ListDir(ctx, owner, repo, ".github/workflows")
+			if err != nil {
+				return err
+			}
+			for _, f := range files {
+				name := f.GetName()
+				if !strings.HasSuffix(name, ".yml") && !strings.HasSuffix(name, ".yaml") {
+					continue
+				}
+				content, err := client.GetFileContent(ctx, owner, repo, f.GetPath())
+				if err != nil {
+					return err
+				}
+				if workflowTriggersOnPR(content) {
+					return nil
+				}
+			}
+			return fmt.Errorf("no workflow triggers on pull_request")
+		},
+	},
 	{
 		name: "dependabot-config",
 		run: func(ctx context.Context, client *ghclient.Client, owner, repo string) error {
@@ -47,6 +72,31 @@ is used.`,
 
 func init() {
 	rootCmd.AddCommand(scanCmd)
+}
+
+// workflowTriggersOnPR reports whether a GitHub Actions workflow file triggers
+// on the pull_request event. The on: key may be a string, a sequence, or a mapping.
+func workflowTriggersOnPR(content string) bool {
+	var wf struct {
+		On interface{} `yaml:"on"`
+	}
+	if err := yaml.Unmarshal([]byte(content), &wf); err != nil {
+		return false
+	}
+	switch v := wf.On.(type) {
+	case string:
+		return v == "pull_request"
+	case []interface{}:
+		for _, item := range v {
+			if s, ok := item.(string); ok && s == "pull_request" {
+				return true
+			}
+		}
+	case map[string]interface{}:
+		_, ok := v["pull_request"]
+		return ok
+	}
+	return false
 }
 
 func runScan(cmd *cobra.Command, args []string) error {
