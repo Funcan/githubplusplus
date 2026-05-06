@@ -254,6 +254,31 @@ func (c *Client) GetFileContent(ctx context.Context, owner, repo, path string) (
 	return content, nil
 }
 
+// BranchExists reports whether the named branch exists in the repository.
+func (c *Client) BranchExists(ctx context.Context, owner, repo, branch string) (bool, error) {
+	_, resp, err := c.gh.Repositories.GetBranch(ctx, owner, repo, branch, 0)
+	if err != nil {
+		if resp != nil && resp.StatusCode == 404 {
+			return false, nil
+		}
+		return false, fmt.Errorf("getting branch %s in %s/%s: %w", branch, owner, repo, err)
+	}
+	return true, nil
+}
+
+// GetBranchProtection returns the protection rules for the given branch.
+// Returns nil (not an error) if the branch exists but has no protection rules.
+func (c *Client) GetBranchProtection(ctx context.Context, owner, repo, branch string) (*gogithub.Protection, error) {
+	protection, resp, err := c.gh.Repositories.GetBranchProtection(ctx, owner, repo, branch)
+	if err != nil {
+		if resp != nil && resp.StatusCode == 404 {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("getting branch protection for %s in %s/%s: %w", branch, owner, repo, err)
+	}
+	return protection, nil
+}
+
 // FileExists reports whether the given path exists in the repository's default branch.
 func (c *Client) FileExists(ctx context.Context, owner, repo, path string) (bool, error) {
 	_, _, resp, err := c.gh.Repositories.GetContents(ctx, owner, repo, path, nil)

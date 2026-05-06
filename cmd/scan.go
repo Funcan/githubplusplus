@@ -43,6 +43,33 @@ var checks = []check{
 		},
 	},
 	{
+		name: "protected-default-branch",
+		run: func(ctx context.Context, client *ghclient.Client, owner, repo string) error {
+			var checked bool
+			for _, branch := range []string{"main", "master"} {
+				exists, err := client.BranchExists(ctx, owner, repo, branch)
+				if err != nil {
+					return err
+				}
+				if !exists {
+					continue
+				}
+				checked = true
+				protection, err := client.GetBranchProtection(ctx, owner, repo, branch)
+				if err != nil {
+					return err
+				}
+				if protection == nil || protection.RequiredPullRequestReviews == nil {
+					return fmt.Errorf("branch %s does not require pull request reviews", branch)
+				}
+			}
+			if !checked {
+				return fmt.Errorf("neither main nor master branch found")
+			}
+			return nil
+		},
+	},
+	{
 		name: "dependabot-config",
 		run: func(ctx context.Context, client *ghclient.Client, owner, repo string) error {
 			for _, path := range []string{".github/dependabot.yml", ".github/dependabot.yaml"} {
