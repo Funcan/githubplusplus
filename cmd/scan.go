@@ -70,6 +70,34 @@ var checks = []check{
 		},
 	},
 	{
+		name: "ci-required-to-merge",
+		run: func(ctx context.Context, client *ghclient.Client, owner, repo string) error {
+			var checked bool
+			for _, branch := range []string{"main", "master"} {
+				exists, err := client.BranchExists(ctx, owner, repo, branch)
+				if err != nil {
+					return err
+				}
+				if !exists {
+					continue
+				}
+				checked = true
+				protection, err := client.GetBranchProtection(ctx, owner, repo, branch)
+				if err != nil {
+					return err
+				}
+				rsc := protection.GetRequiredStatusChecks()
+				if rsc == nil || (len(rsc.GetContexts()) == 0 && len(rsc.GetChecks()) == 0) {
+					return fmt.Errorf("branch %s has no required status checks", branch)
+				}
+			}
+			if !checked {
+				return fmt.Errorf("neither main nor master branch found")
+			}
+			return nil
+		},
+	},
+	{
 		name: "dependabot-config",
 		run: func(ctx context.Context, client *ghclient.Client, owner, repo string) error {
 			for _, path := range []string{".github/dependabot.yml", ".github/dependabot.yaml"} {
