@@ -18,9 +18,18 @@ type check struct {
 
 var checks = []check{
 	{
-		name: "dummy",
+		name: "dependabot-config",
 		run: func(ctx context.Context, client *ghclient.Client, owner, repo string) error {
-			return nil
+			for _, path := range []string{".github/dependabot.yml", ".github/dependabot.yaml"} {
+				ok, err := client.FileExists(ctx, owner, repo, path)
+				if err != nil {
+					return err
+				}
+				if ok {
+					return nil
+				}
+			}
+			return fmt.Errorf("no .github/dependabot.yml found")
 		},
 	},
 }

@@ -228,6 +228,18 @@ func (c *Client) ListOpenIssues(ctx context.Context, owner, repo string) ([]*gog
 	return issues, nil
 }
 
+// FileExists reports whether the given path exists in the repository's default branch.
+func (c *Client) FileExists(ctx context.Context, owner, repo, path string) (bool, error) {
+	_, _, resp, err := c.gh.Repositories.GetContents(ctx, owner, repo, path, nil)
+	if err != nil {
+		if resp != nil && resp.StatusCode == 404 {
+			return false, nil
+		}
+		return false, fmt.Errorf("checking %s in %s/%s: %w", path, owner, repo, err)
+	}
+	return true, nil
+}
+
 // ListOrgRepos returns all repos for the given org.
 func (c *Client) ListOrgRepos(ctx context.Context, org string) ([]*gogithub.Repository, error) {
 	repos, err := paginate(func(page int) ([]*gogithub.Repository, *gogithub.Response, error) {
