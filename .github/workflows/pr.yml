@@ -24,4 +24,4 @@ jobs:
       - name: test
         run: make test
 
-      - uses: Funcan/gh-action-lint@c5c57bf915ed44a4da8dff2710bcb3f9823bc3fc # main
+      - uses: Funcan/gh-action-lint@646cf2d34d9ada8609365956318e324ed0ca800e # main
